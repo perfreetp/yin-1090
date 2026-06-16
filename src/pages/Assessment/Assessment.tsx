@@ -34,7 +34,7 @@ export default function AssessmentPage() {
   const navigate = useNavigate()
   const params = useParams()
   const { 
-    getPersonById, performAssessment, rePerformAssessment, 
+    getPersonById, performAssessment, rePerformAssessment, refreshAssessment, 
     saveDeepInterview, currentPersonId, setCurrentPerson, addReferral 
   } = useAppStore()
   
@@ -61,7 +61,7 @@ export default function AssessmentPage() {
         if (record.person.status === 'completed' && record.questionnaire && record.vitals) {
           const v = record.vitals
           if (v.height && v.weight && v.systolicBp && v.diastolicBp && v.neckCircumference) {
-            const freshResult = rePerformAssessment(personId)
+            const freshResult = refreshAssessment(personId)
             if (freshResult) {
               setAssessment(freshResult)
               const updated = getPersonById(personId)
@@ -120,7 +120,7 @@ export default function AssessmentPage() {
         }
       }
     }
-  }, [personId, getPersonById, performAssessment, rePerformAssessment, setCurrentPerson])
+  }, [personId, getPersonById, performAssessment, refreshAssessment, setCurrentPerson])
 
   const record = personId ? getPersonById(personId) : undefined
 

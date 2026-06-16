@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Archive, AlertTriangle, CheckCircle, Clock, Users, FileText, Lock } from 'lucide-react'
+import { Archive, AlertTriangle, CheckCircle, Clock, Users, FileText, Lock, Edit3 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { formatDateTime } from '@/utils/storage'
 import { getRiskLevelText, getStatusText, getReferralStatusText } from '@/utils/assessment'
@@ -9,12 +9,19 @@ import Button from '@/components/Button/Button'
 import { RiskBadge, StatusBadge, ReferralBadge } from '@/components/Badge/Badge'
 
 export default function ArchivePage() {
-  const { sessions, currentSessionId, isSessionArchived, archiveSession } = useAppStore()
+  const { sessions, currentSessionId, isSessionArchived, archiveSession, records } = useAppStore()
   const [archiving, setArchiving] = useState(false)
+  const [showModRecords, setShowModRecords] = useState(false)
 
   const currentSession = sessions.find(s => s.id === currentSessionId)
   const archived = isSessionArchived()
   const summary = currentSession?.archiveSummary
+
+  const sessionRecords = records.filter(r => r.person.sessionId === currentSessionId)
+  const allModRecords = sessionRecords
+    .filter(r => r.modificationRecords.length > 0)
+    .flatMap(r => r.modificationRecords.map(m => ({ ...m, personName: r.person.name })))
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
 
   const handleArchive = () => {
     setArchiving(true)
@@ -218,6 +225,53 @@ export default function ArchivePage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </Card>
+            )}
+
+            {allModRecords.length > 0 && (
+              <Card className="border-amber-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Edit3 className="w-5 h-5 text-amber-600" />
+                    归档后修改记录
+                    <span className="text-sm font-normal text-gray-500">
+                      （{allModRecords.length}条）
+                    </span>
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={() => setShowModRecords(!showModRecords)}>
+                    {showModRecords ? '收起' : '展开全部'}
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {(showModRecords ? allModRecords : allModRecords.slice(0, 5)).map(mod => (
+                    <div key={mod.id} className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-900">{mod.personName}</span>
+                        <span className="text-xs text-gray-500">{formatDateTime(mod.modifiedAt)}</span>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium text-amber-800">
+                          {mod.field === 'snoreFrequency' ? '打鼾频率' :
+                           mod.field === 'nightAwakening' ? '夜间憋醒' :
+                           mod.field === 'daytimeSleepiness' ? '白天嗜睡' :
+                           mod.field === 'hasHypertension' ? '高血压病史' :
+                           mod.field === 'medicalHistory' ? '既往病史' :
+                           mod.field === 'height' ? '身高' :
+                           mod.field === 'weight' ? '体重' :
+                           mod.field === 'systolicBp' ? '收缩压' :
+                           mod.field === 'diastolicBp' ? '舒张压' :
+                           mod.field === 'neckCircumference' ? '颈围' :
+                           mod.field === 'waistCircumference' ? '腰围' : mod.field}
+                        </span>
+                        {'：'}
+                        <span className="line-through text-red-400">{mod.oldValue}</span>
+                        {' → '}
+                        <span className="text-green-600 font-medium">{mod.newValue}</span>
+                      </div>
+                      <p className="text-xs text-amber-700 mt-1">原因：{mod.reason}</p>
+                    </div>
+                  ))}
                 </div>
               </Card>
             )}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Mic } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Mic, Lock } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Card/Card'
@@ -52,7 +52,7 @@ const medicalHistories = [
 export default function Questionnaire() {
   const navigate = useNavigate()
   const params = useParams()
-  const { getPersonById, saveQuestionnaire, currentPersonId, setCurrentPerson } = useAppStore()
+  const { getPersonById, saveQuestionnaire, currentPersonId, setCurrentPerson, isSessionArchived } = useAppStore()
   
   const personId = params.id || currentPersonId
   
@@ -65,6 +65,8 @@ export default function Questionnaire() {
   })
   const [medicalHistory, setMedicalHistory] = useState<string[]>([])
   const [showHistoryStep, setShowHistoryStep] = useState(false)
+  const [showModModal, setShowModModal] = useState(false)
+  const [modReason, setModReason] = useState('')
 
   useEffect(() => {
     if (personId) {
@@ -132,13 +134,24 @@ export default function Questionnaire() {
       return
     }
 
+    const archived = isSessionArchived()
+    if (archived) {
+      setShowModModal(true)
+      return
+    }
+
+    doSave()
+  }
+
+  const doSave = (reason?: string) => {
+    if (!personId) return
     saveQuestionnaire(personId, {
       snoreFrequency: answers.snoreFrequency as number,
       nightAwakening: answers.nightAwakening as number,
       daytimeSleepiness: answers.daytimeSleepiness as number,
       hasHypertension: answers.hasHypertension as boolean,
       medicalHistory: medicalHistory.join(',')
-    })
+    }, reason)
 
     navigate('/vitals' + (personId ? `/${personId}` : ''))
   }
@@ -274,6 +287,50 @@ export default function Questionnaire() {
           <ProgressBar value={progress} color="blue" />
         </div>
       </div>
+
+      {showModModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+              <Lock className="w-5 h-5 text-amber-500" />
+              <h3 className="text-lg font-bold text-gray-900">归档数据修改</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-amber-700 mb-4">
+                当前场次已归档，修改数据需填写修改说明
+              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                修改说明 <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="请说明修改原因"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none resize-none text-sm"
+                value={modReason}
+                onChange={(e) => setModReason(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <Button variant="ghost" onClick={() => { setShowModModal(false); setModReason('') }}>
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!modReason.trim()) {
+                    alert('请填写修改说明')
+                    return
+                  }
+                  setShowModModal(false)
+                  doSave(modReason.trim())
+                  setModReason('')
+                }}
+              >
+                确认修改
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -50,6 +50,7 @@ interface AppState {
   saveVitals: (personId: string, data: Partial<Vitals>, modificationReason?: string) => void
   performAssessment: (personId: string) => Assessment | null
   rePerformAssessment: (personId: string) => Assessment | null
+  refreshAssessment: (personId: string) => Assessment | null
   saveDeepInterview: (personId: string, data: { familyFeedback: string; notes: string }) => void
   recordModification: (personId: string, field: string, oldValue: string, newValue: string, reason: string, modifiedBy: string) => void
   
@@ -270,10 +271,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveQuestionnaire: (personId, data, modificationReason) => {
-    const { records } = get()
+    const { records, currentSessionId, sessions } = get()
+    const isArchived = sessions.find(s => s.id === currentSessionId)?.isArchived || false
+
     const newRecords = records.map(r => {
       if (r.person.id !== personId) return r
-      
+
       const existingQ = r.questionnaire || { 
         id: generateId('q'), 
         personId,
@@ -285,11 +288,39 @@ export const useAppStore = create<AppState>((set, get) => ({
         familyFeedback: '',
         notes: ''
       }
-      
+
+      const newQ = { ...existingQ, ...data }
+      const status = r.person.status === 'completed' ? 'completed' as const : 'questionnaire_done' as const
+
+      const mods = [...r.modificationRecords]
+      if (isArchived && modificationReason) {
+        const oldQ = r.questionnaire
+        if (oldQ) {
+          const fields: (keyof Questionnaire)[] = ['snoreFrequency', 'nightAwakening', 'daytimeSleepiness', 'hasHypertension', 'medicalHistory']
+          fields.forEach(f => {
+            const oldVal = String(oldQ[f] ?? '')
+            const newVal = String(newQ[f] ?? '')
+            if (oldVal !== newVal) {
+              mods.push({
+                id: generateId('mod'),
+                personId,
+                field: f,
+                oldValue: oldVal,
+                newValue: newVal,
+                reason: modificationReason,
+                modifiedBy: '当前操作员',
+                modifiedAt: new Date().toISOString()
+              })
+            }
+          })
+        }
+      }
+
       return {
         ...r,
-        questionnaire: { ...existingQ, ...data },
-        person: { ...r.person, status: 'questionnaire_done' as const }
+        questionnaire: newQ,
+        person: { ...r.person, status },
+        modificationRecords: mods
       }
     })
     set({ records: newRecords })
@@ -297,10 +328,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveVitals: (personId, data, modificationReason) => {
-    const { records } = get()
+    const { records, currentSessionId, sessions } = get()
+    const isArchived = sessions.find(s => s.id === currentSessionId)?.isArchived || false
+
     const newRecords = records.map(r => {
       if (r.person.id !== personId) return r
-      
+
       const existingV = r.vitals || {
         id: generateId('v'),
         personId,
@@ -312,16 +345,43 @@ export const useAppStore = create<AppState>((set, get) => ({
         neckCircumference: 0,
         waistCircumference: 0
       }
-      
+
       const newVitals = { ...existingV, ...data }
       if (newVitals.height && newVitals.weight) {
         newVitals.bmi = calculateBMI(newVitals.height, newVitals.weight)
       }
-      
+
+      const status = r.person.status === 'completed' ? 'completed' as const : 'vitals_done' as const
+
+      const mods = [...r.modificationRecords]
+      if (isArchived && modificationReason) {
+        const oldV = r.vitals
+        if (oldV) {
+          const fields: (keyof Vitals)[] = ['height', 'weight', 'systolicBp', 'diastolicBp', 'neckCircumference', 'waistCircumference']
+          fields.forEach(f => {
+            const oldVal = String(oldV[f] ?? '')
+            const newVal = String(newVitals[f] ?? '')
+            if (oldVal !== newVal) {
+              mods.push({
+                id: generateId('mod'),
+                personId,
+                field: f,
+                oldValue: oldVal,
+                newValue: newVal,
+                reason: modificationReason,
+                modifiedBy: '当前操作员',
+                modifiedAt: new Date().toISOString()
+              })
+            }
+          })
+        }
+      }
+
       return {
         ...r,
         vitals: newVitals,
-        person: { ...r.person, status: 'vitals_done' as const }
+        person: { ...r.person, status },
+        modificationRecords: mods
       }
     })
     set({ records: newRecords })
@@ -378,9 +438,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const previousAssessment = record.assessment
+    const baseAssessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
+
+    const scoreUnchanged = baseAssessment.totalScore === previousAssessment.totalScore &&
+                           baseAssessment.riskLevel === previousAssessment.riskLevel
+
+    if (scoreUnchanged) {
+      return null
+    }
+
     const newCount = previousAssessment.reassessmentCount + 1
     
-    const baseAssessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
     const newAssessment: Assessment = {
       ...baseAssessment,
       id: generateId('assessment'),
@@ -403,6 +471,55 @@ export const useAppStore = create<AppState>((set, get) => ({
     setStorageItem(STORAGE_KEYS.records, newRecords)
     
     return newAssessment
+  },
+
+  refreshAssessment: (personId) => {
+    const { records } = get()
+    const record = records.find(r => r.person.id === personId)
+
+    if (!record || !record.questionnaire || !record.vitals || !record.assessment) {
+      return null
+    }
+
+    const v = record.vitals
+    if (!v.height || !v.weight || !v.systolicBp || !v.diastolicBp || !v.neckCircumference) {
+      return null
+    }
+
+    const previousAssessment = record.assessment
+
+    const baseAssessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
+
+    const scoreChanged = baseAssessment.totalScore !== previousAssessment.totalScore ||
+                         baseAssessment.riskLevel !== previousAssessment.riskLevel
+
+    if (!scoreChanged) {
+      return null
+    }
+
+    const newCount = previousAssessment.reassessmentCount + 1
+    const refreshedAssessment: Assessment = {
+      ...baseAssessment,
+      id: generateId('assessment'),
+      isReassessment: true,
+      reassessmentCount: newCount,
+      previousAssessmentId: previousAssessment.id
+    }
+
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId) return r
+      return {
+        ...r,
+        assessment: refreshedAssessment,
+        assessmentHistory: [...r.assessmentHistory, refreshedAssessment],
+        review: r.review ? { ...r.review, status: 'needs_review' as const } : undefined
+      }
+    })
+
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+
+    return refreshedAssessment
   },
 
   saveDeepInterview: (personId, data) => {

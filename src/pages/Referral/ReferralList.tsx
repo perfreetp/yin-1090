@@ -17,7 +17,7 @@ import Input from '@/components/Form/Input'
 import { ReferralBadge, RiskBadge } from '@/components/Badge/Badge'
 import type { ReferralStatus, FollowUpStatus, FollowUpRecord } from '@/types'
 
-type FilterType = 'all' | ReferralStatus | FollowUpStatus
+type FilterType = 'all' | ReferralStatus | FollowUpStatus | 'referral_completed'
 type TabType = 'referral' | 'followup'
 
 const FOLLOW_UP_STEPS: { key: FollowUpStatus; label: string; icon: typeof Phone }[] = [
@@ -90,8 +90,11 @@ export default function ReferralList() {
     const matchesSearch = r.person.name.includes(searchText) ||
                           r.person.phone.includes(searchText)
     if (filter === 'all') return matchesSearch
-    if (['pending', 'referred', 'completed', 'cancelled'].includes(filter)) {
+    if (['pending', 'referred', 'cancelled'].includes(filter)) {
       return matchesSearch && r.referral?.status === filter
+    }
+    if (filter === 'referral_completed') {
+      return matchesSearch && r.referral?.status === 'completed'
     }
     return matchesSearch && r.referral?.followUpProgress === filter
   })
@@ -100,12 +103,13 @@ export default function ReferralList() {
     all: records.length,
     pending: records.filter(r => r.referral?.status === 'pending').length,
     referred: records.filter(r => r.referral?.status === 'referred').length,
-    completed: records.filter(r => r.referral?.status === 'completed').length,
+    referral_completed: records.filter(r => r.referral?.status === 'completed').length,
     pending_contact: records.filter(r => r.referral?.followUpProgress === 'pending_contact').length,
     contacted: records.filter(r => r.referral?.followUpProgress === 'contacted').length,
     scheduled: records.filter(r => r.referral?.followUpProgress === 'scheduled').length,
     arrived: records.filter(r => r.referral?.followUpProgress === 'arrived').length,
     no_show: records.filter(r => r.referral?.followUpProgress === 'no_show').length,
+    completed: records.filter(r => r.referral?.followUpProgress === 'completed').length,
   }
 
   const openFollowUpModal = (personId: string) => {
@@ -182,11 +186,12 @@ export default function ReferralList() {
   const filters: { key: FilterType; label: string; icon: typeof FileText }[] = [
     { key: 'all', label: '全部', icon: FileText },
     { key: 'referred', label: '已转诊', icon: Hospital },
+    { key: 'referral_completed', label: '转诊完成', icon: CheckCircle },
     { key: 'pending_contact', label: '待联系', icon: Phone },
     { key: 'contacted', label: '已联系', icon: Phone },
     { key: 'scheduled', label: '已预约', icon: Calendar },
     { key: 'arrived', label: '已到院', icon: MapPin },
-    { key: 'completed', label: '已完成', icon: CheckCircle },
+    { key: 'completed', label: '随访完成', icon: CheckCircle },
   ]
 
   const getCurrentStepIndex = (status: FollowUpStatus): number => {

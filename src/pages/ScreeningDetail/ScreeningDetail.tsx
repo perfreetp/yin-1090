@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { User, ClipboardList, HeartPulse, Activity, FileText, CheckCircle2, Circle } from 'lucide-react'
+import { User, ClipboardList, HeartPulse, Activity, FileText, CheckCircle2, Circle, Edit3 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Card/Card'
@@ -351,6 +351,46 @@ export default function ScreeningDetail() {
                    referral.status === 'referred' ? '已转诊' :
                    referral.status === 'completed' ? '已完成' : '已取消'}
                 </span>
+              </div>
+            </Card>
+          )}
+
+          {record.modificationRecords && record.modificationRecords.length > 0 && (
+            <Card className="border-amber-200">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+                修改记录
+                <span className="text-sm font-normal text-gray-500">
+                  （{record.modificationRecords.length}条）
+                </span>
+              </h3>
+              <div className="space-y-3">
+                {[...record.modificationRecords].reverse().map(mod => (
+                  <div key={mod.id} className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-amber-800">
+                        {mod.field === 'snoreFrequency' ? '打鼾频率' :
+                         mod.field === 'nightAwakening' ? '夜间憋醒' :
+                         mod.field === 'daytimeSleepiness' ? '白天嗜睡' :
+                         mod.field === 'hasHypertension' ? '高血压病史' :
+                         mod.field === 'medicalHistory' ? '既往病史' :
+                         mod.field === 'height' ? '身高' :
+                         mod.field === 'weight' ? '体重' :
+                         mod.field === 'systolicBp' ? '收缩压' :
+                         mod.field === 'diastolicBp' ? '舒张压' :
+                         mod.field === 'neckCircumference' ? '颈围' :
+                         mod.field === 'waistCircumference' ? '腰围' : mod.field}
+                      </span>
+                      <span className="text-xs text-gray-500">{formatDateTime(mod.modifiedAt)}</span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <span className="line-through text-red-400">{mod.oldValue}</span>
+                      {' → '}
+                      <span className="text-green-600 font-medium">{mod.newValue}</span>
+                    </div>
+                    <p className="text-xs text-amber-700 mt-1">原因：{mod.reason}</p>
+                  </div>
+                ))}
               </div>
             </Card>
           )}

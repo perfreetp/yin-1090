@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet, ListChecks, Phone, ClipboardCheck, Clock, ArrowRight } from 'lucide-react'
+import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet, ListChecks, Phone, ClipboardCheck, Clock, ArrowRight, CheckCircle } from 'lucide-react'
 import { PieChart as RechartsPie, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
 import { exportToCSV } from '@/utils/export'
@@ -130,7 +130,7 @@ export default function Statistics() {
           </div>
         </Card>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <StatCard
             title="筛查总数"
             value={stats.total}
@@ -177,6 +177,12 @@ export default function Statistics() {
             title="已到院"
             value={stats.followUpArrived}
             icon={<Phone className="w-6 h-6" />}
+            color="green"
+          />
+          <StatCard
+            title="随访完成"
+            value={stats.followUpCompleted}
+            icon={<CheckCircle className="w-6 h-6" />}
             color="green"
           />
         </div>
