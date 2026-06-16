@@ -9,6 +9,7 @@ import AssessmentPage from "@/pages/Assessment/Assessment"
 import ReferralList from "@/pages/Referral/ReferralList"
 import Statistics from "@/pages/Statistics/Statistics"
 import Education from "@/pages/Education/Education"
+import Review from "@/pages/Review/Review"
 import ScreeningDetail from "@/pages/ScreeningDetail/ScreeningDetail"
 import { useAppStore } from "@/store/useAppStore"
 
@@ -31,6 +32,7 @@ function AppRoutes() {
         <Route path="/assessment" element={<AssessmentPage />} />
         <Route path="/assessment/:id" element={<AssessmentPage />} />
         <Route path="/referral" element={<ReferralList />} />
+        <Route path="/review" element={<Review />} />
         <Route path="/statistics" element={<Statistics />} />
         <Route path="/education" element={<Education />} />
         <Route path="/screening/:id" element={<ScreeningDetail />} />

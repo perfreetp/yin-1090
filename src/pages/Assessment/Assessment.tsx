@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, FileText, MessageSquareText, Printer, ChevronDown, ChevronUp, Download, AlertCircle, ArrowRight } from 'lucide-react'
+import { 
+  AlertTriangle, FileText, MessageSquareText, Printer, ChevronDown, ChevronUp, 
+  Download, AlertCircle, ArrowRight, RefreshCw, Clock, CheckCircle, 
+  TrendingUp, TrendingDown, Minus, History 
+} from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { getRiskLevelText, getRiskLevelBgColor, getRiskLevelColor } from '@/utils/assessment'
 import { printResult } from '@/utils/export'
@@ -9,7 +13,7 @@ import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Card/Card'
 import Button from '@/components/Button/Button'
 import { RiskBadge } from '@/components/Badge/Badge'
-import type { Assessment } from '@/types'
+import type { Assessment, ScoreDetail } from '@/types'
 
 interface MissingField {
   name: string
@@ -17,13 +21,26 @@ interface MissingField {
   stepLabel: string
 }
 
+interface ScoreDiff {
+  name: string
+  oldScore: number
+  newScore: number
+  oldDesc: string
+  newDesc: string
+  changed: boolean
+}
+
 export default function AssessmentPage() {
   const navigate = useNavigate()
   const params = useParams()
-  const { getPersonById, performAssessment, saveDeepInterview, currentPersonId, setCurrentPerson, addReferral } = useAppStore()
+  const { 
+    getPersonById, performAssessment, rePerformAssessment, 
+    saveDeepInterview, currentPersonId, setCurrentPerson, addReferral 
+  } = useAppStore()
   
   const personId = params.id || currentPersonId
   const [assessment, setAssessment] = useState<Assessment | null>(null)
+  const [previousAssessment, setPreviousAssessment] = useState<Assessment | null>(null)
   const [showDeepInterview, setShowDeepInterview] = useState(false)
   const [deepInterviewData, setDeepInterviewData] = useState({
     familyFeedback: '',
@@ -32,6 +49,8 @@ export default function AssessmentPage() {
   const [referralHospital, setReferralHospital] = useState('')
   const [showReferralForm, setShowReferralForm] = useState(false)
   const [missingFields, setMissingFields] = useState<MissingField[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
 
   useEffect(() => {
     if (personId) {
@@ -46,6 +65,10 @@ export default function AssessmentPage() {
             familyFeedback: record.questionnaire.familyFeedback || '',
             notes: record.questionnaire.notes || ''
           })
+        }
+        if (record.assessmentHistory && record.assessmentHistory.length >= 2) {
+          const len = record.assessmentHistory.length
+          setPreviousAssessment(record.assessmentHistory[len - 2])
         }
       } else {
         const missing: MissingField[] = []
@@ -81,6 +104,20 @@ export default function AssessmentPage() {
 
   const record = personId ? getPersonById(personId) : undefined
 
+  const handleReAssess = () => {
+    if (!personId) return
+    const result = rePerformAssessment(personId)
+    if (result) {
+      setAssessment(result)
+      const updated = getPersonById(personId)
+      if (updated?.assessmentHistory && updated.assessmentHistory.length >= 2) {
+        const len = updated.assessmentHistory.length
+        setPreviousAssessment(updated.assessmentHistory[len - 2])
+      }
+      setShowDiff(true)
+    }
+  }
+
   const handleSaveDeepInterview = () => {
     if (!personId) return
     saveDeepInterview(personId, deepInterviewData)
@@ -112,6 +149,25 @@ export default function AssessmentPage() {
   const goToMissingStep = (step: string) => {
     navigate(step + (personId ? `/${personId}` : ''))
   }
+
+  const calculateScoreDiffs = (): ScoreDiff[] => {
+    if (!assessment || !previousAssessment) return []
+    
+    return assessment.scoreDetails.map((newDetail, idx) => {
+      const oldDetail = previousAssessment.scoreDetails[idx]
+      return {
+        name: newDetail.name,
+        oldScore: oldDetail?.score || 0,
+        newScore: newDetail.score,
+        oldDesc: oldDetail?.description || '-',
+        newDesc: newDetail.description,
+        changed: (oldDetail?.score || 0) !== newDetail.score
+      }
+    })
+  }
+
+  const scoreDiffs = calculateScoreDiffs()
+  const hasScoreChanges = scoreDiffs.some(d => d.changed)
 
   if (!record) {
     return (
@@ -167,6 +223,155 @@ export default function AssessmentPage() {
             </Card>
           ) : (
             <>
+              {assessment?.isReassessment && (
+                <Card className="border-purple-300 bg-purple-50/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <RefreshCw className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-purple-900">
+                          第 {assessment.reassessmentCount} 次重新评估
+                        </h4>
+                        <p className="text-sm text-purple-700">
+                          已根据最新体征和问诊信息重新计算评分
+                        </p>
+                      </div>
+                    </div>
+                    {previousAssessment && (
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          variant={showDiff ? 'primary' : 'outline'}
+                          onClick={() => setShowDiff(!showDiff)}
+                        >
+                          {showDiff ? '隐藏差异' : '查看差异'}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => setShowHistory(!showHistory)}
+                        >
+                          <History className="w-4 h-4 mr-1" />
+                          历史记录
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {showDiff && previousAssessment && hasScoreChanges && (
+                <Card className="border-amber-300 bg-amber-50/30">
+                  <h3 className="text-lg font-bold text-amber-900 mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    评分变化对比
+                  </h3>
+                  <div className="space-y-3">
+                    {scoreDiffs.filter(d => d.changed).map((diff, idx) => (
+                      <div key={idx} className="p-3 bg-white rounded-lg border border-amber-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-gray-900">{diff.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">
+                              {diff.oldScore}分 → 
+                            </span>
+                            <span className={`text-sm font-bold ${
+                              diff.newScore > diff.oldScore ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              {diff.newScore > diff.oldScore ? '+' : ''}{diff.newScore - diff.oldScore}分
+                            </span>
+                            {diff.newScore > diff.oldScore ? (
+                              <TrendingUp className="w-4 h-4 text-red-500" />
+                            ) : diff.newScore < diff.oldScore ? (
+                              <TrendingDown className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <Minus className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          <span className="text-gray-400">原由：{diff.oldDesc}</span>
+                          <br />
+                          <span className="text-amber-700 font-medium">现为：{diff.newDesc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-4 bg-white rounded-lg border border-amber-300">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-500">总分变化</p>
+                        <p className="text-2xl font-bold">
+                          <span className="text-gray-400 line-through mr-2">
+                            {previousAssessment.totalScore}分
+                          </span>
+                          <span className={
+                            assessment.totalScore > previousAssessment.totalScore 
+                              ? 'text-red-600' 
+                              : assessment.totalScore < previousAssessment.totalScore
+                                ? 'text-green-600'
+                                : 'text-gray-900'
+                          }>
+                            {assessment.totalScore}分
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RiskBadge level={previousAssessment.riskLevel} size="sm" />
+                        <ArrowRight className="w-5 h-5 text-gray-400" />
+                        <RiskBadge level={assessment.riskLevel} size="sm" />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {showHistory && record.assessmentHistory.length > 0 && (
+                <Card>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-600" />
+                    评估历史记录
+                  </h3>
+                  <div className="space-y-3">
+                    {[...record.assessmentHistory].reverse().map((hist, idx) => (
+                      <div 
+                        key={hist.id}
+                        className={`p-4 rounded-xl border-2 ${
+                          assessment?.id === hist.id 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {assessment?.id === hist.id && (
+                              <CheckCircle className="w-5 h-5 text-blue-600" />
+                            )}
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {idx === 0 ? '当前结果' : `第 ${record.assessmentHistory.length - idx} 次评估`}
+                              </p>
+                              <p className="text-sm text-gray-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatDateTime(hist.assessedAt)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl font-bold text-gray-900">
+                              {hist.totalScore}/{hist.maxScore}分
+                            </span>
+                            <RiskBadge level={hist.riskLevel} size="sm" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
               <Card className="text-center py-8">
                 <h3 className="text-lg text-gray-600 mb-2">{record.person.name} 的筛查结果</h3>
                 <p className="text-sm text-gray-400 mb-6">
@@ -220,7 +425,19 @@ export default function AssessmentPage() {
               </Card>
 
               <Card>
-                <h3 className="text-lg font-bold text-gray-900 mb-4">评分明细</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-900">评分明细</h3>
+                  {assessment && record.person.status === 'completed' && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={handleReAssess}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      重新评估
+                    </Button>
+                  )}
+                </div>
                 <div className="space-y-4">
                   {assessment?.scoreDetails.map((detail, index) => (
                     <div key={index}>
@@ -422,6 +639,17 @@ export default function AssessmentPage() {
           </Button>
           {!hasMissing && (
             <>
+              {record.person.status === 'completed' && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleReAssess}
+                  className="flex-1"
+                >
+                  <RefreshCw className="w-5 h-5 mr-2" />
+                  重新评估
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="lg"

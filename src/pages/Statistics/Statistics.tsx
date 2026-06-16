@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet, ListChecks } from 'lucide-react'
+import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet, ListChecks, Phone, ClipboardCheck, Clock, ArrowRight } from 'lucide-react'
 import { PieChart as RechartsPie, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
 import { exportToCSV } from '@/utils/export'
-import { getStatusText, getRiskLevelText, getReferralStatusText } from '@/utils/assessment'
+import { getStatusText, getRiskLevelText, getReferralStatusText, getFollowUpStatusText } from '@/utils/assessment'
 import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Card/Card'
 import Button from '@/components/Button/Button'
@@ -29,9 +29,17 @@ export default function Statistics() {
     { name: '高风险', value: stats.highRisk, color: '#ef4444' },
   ]
 
-  const statusDistribution = [
-    { name: '已完成', value: stats.completed, color: '#3b82f6' },
-    { name: '进行中', value: stats.pending, color: '#9ca3af' },
+  const followUpDistribution = [
+    { name: '待联系', value: stats.followUpPending, color: '#9ca3af' },
+    { name: '已联系', value: stats.followUpContacted, color: '#3b82f6' },
+    { name: '已预约', value: stats.followUpScheduled, color: '#a855f7' },
+    { name: '已到院', value: stats.followUpArrived, color: '#22c55e' },
+    { name: '未到院', value: stats.followUpNoShow, color: '#ef4444' },
+  ]
+
+  const reviewDistribution = [
+    { name: '已复核', value: stats.reviewed, color: '#22c55e' },
+    { name: '待复核', value: stats.pendingReview, color: '#f59e0b' },
   ]
 
   const mockDailyData = [
@@ -146,9 +154,33 @@ export default function Statistics() {
             icon={<PieChart className="w-6 h-6" />}
             color="amber"
           />
+          <StatCard
+            title="已复核"
+            value={stats.reviewed}
+            icon={<ClipboardCheck className="w-6 h-6" />}
+            color="green"
+          />
+          <StatCard
+            title="待复核"
+            value={stats.pendingReview}
+            icon={<Clock className="w-6 h-6" />}
+            color="amber"
+          />
+          <StatCard
+            title="已转诊"
+            value={stats.referralPending + stats.referralCompleted}
+            icon={<ArrowRight className="w-6 h-6" />}
+            color="blue"
+          />
+          <StatCard
+            title="已到院"
+            value={stats.followUpArrived}
+            icon={<Phone className="w-6 h-6" />}
+            color="green"
+          />
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-3 gap-6">
           <Card>
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <PieChart className="w-5 h-5 text-blue-600" />
@@ -179,24 +211,80 @@ export default function Statistics() {
 
           <Card>
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-green-600" />
-              每日筛查趋势
+              <BarChart3 className="w-5 h-5 text-purple-600" />
+              转诊随访进度
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mockDailyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
-                  <YAxis stroke="#9ca3af" fontSize={12} />
+                <RechartsPie>
+                  <Pie
+                    data={followUpDistribution.filter(d => d.value > 0)}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {followUpDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
                   <Tooltip />
-                  <Legend />
-                  <Bar dataKey="筛查" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="高危" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                </RechartsPie>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-green-600" />
+              复核状态分布
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPie>
+                  <Pie
+                    data={reviewDistribution.filter(d => d.value > 0)}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {reviewDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </RechartsPie>
               </ResponsiveContainer>
             </div>
           </Card>
         </div>
+
+        <Card>
+          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-green-600" />
+            每日筛查趋势
+          </h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={mockDailyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
+                <YAxis stroke="#9ca3af" fontSize={12} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="筛查" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="高危" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         <Card>
           <div className="flex items-center justify-between mb-4 border-b border-gray-100 -mx-6 px-6 pb-4">
@@ -308,7 +396,8 @@ export default function Statistics() {
                     <th className="text-left py-3 px-4 font-medium text-gray-500">联系电话</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">筛查状态</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">风险等级</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">转诊状态</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">复核状态</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">随访进度</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500">操作</th>
                   </tr>
                 </thead>
@@ -331,8 +420,33 @@ export default function Statistics() {
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {record.referral ? (
-                          <ReferralBadge status={record.referral.status} size="sm" />
+                        {record.review ? (
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.review.status === 'reviewed' ? 'bg-green-100 text-green-700' :
+                            record.review.status === 'needs_review' ? 'bg-red-100 text-red-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {record.review.status === 'reviewed' ? '已复核' :
+                             record.review.status === 'needs_review' ? '需再核' : '待复核'}
+                          </span>
+                        ) : record.person.status === 'completed' ? (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">待复核</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {record.referral?.followUpProgress ? (
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            record.referral.followUpProgress === 'arrived' ? 'bg-green-100 text-green-700' :
+                            record.referral.followUpProgress === 'no_show' ? 'bg-red-100 text-red-700' :
+                            record.referral.followUpProgress === 'scheduled' ? 'bg-purple-100 text-purple-700' :
+                            record.referral.followUpProgress === 'contacted' ? 'bg-blue-100 text-blue-700' :
+                            record.referral.followUpProgress === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {getFollowUpStatusText(record.referral.followUpProgress)}
+                          </span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}

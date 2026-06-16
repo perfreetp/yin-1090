@@ -1,5 +1,5 @@
 import type { ScreeningRecord } from '@/types'
-import { getRiskLevelText, getStatusText, getReferralStatusText } from './assessment'
+import { getRiskLevelText, getStatusText, getReferralStatusText, getFollowUpStatusText, getReviewStatusText } from './assessment'
 import { formatDateTime } from './storage'
 
 export function exportToCSV(records: ScreeningRecord[], filename?: string): void {
@@ -25,8 +25,17 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
     '白天嗜睡',
     '总分',
     '风险等级',
+    '是否重新评估',
+    '重评次数',
+    '复核状态',
+    '复核人',
+    '复核时间',
+    '复核备注',
     '转诊状态',
     '转诊医院',
+    '随访进度',
+    '预约日期',
+    '未到院原因',
     '建档时间',
     '筛查完成时间'
   ]
@@ -36,7 +45,8 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
   const sleepinessDescriptions = ['从不', '偶尔', '有时', '经常', '总是']
 
   const rows = records.map((record, index) => {
-    const { person, questionnaire, vitals, assessment, referral } = record
+    const { person, questionnaire, vitals, assessment, referral, review } = record
+    const reviewStatus = review ? review.status : (person.status === 'completed' ? 'pending' : '')
     return [
       index + 1,
       person.name,
@@ -59,8 +69,17 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
       questionnaire ? sleepinessDescriptions[questionnaire.daytimeSleepiness] || '-' : '-',
       assessment?.totalScore != null ? assessment.totalScore : '-',
       assessment ? getRiskLevelText(assessment.riskLevel) : '-',
+      assessment?.isReassessment ? '是' : '否',
+      assessment?.reassessmentCount || 0,
+      reviewStatus ? getReviewStatusText(reviewStatus) : '-',
+      review?.reviewedBy || '-',
+      review?.reviewedAt ? formatDateTime(review.reviewedAt) : '-',
+      review?.notes || '-',
       referral ? getReferralStatusText(referral.status) : '-',
       referral?.hospital || '-',
+      referral?.followUpProgress ? getFollowUpStatusText(referral.followUpProgress) : '-',
+      referral?.scheduledDate || '-',
+      referral?.noShowReason || '-',
       person.createdAt ? formatDateTime(person.createdAt) : '-',
       assessment?.assessedAt ? formatDateTime(assessment.assessedAt) : '-'
     ]

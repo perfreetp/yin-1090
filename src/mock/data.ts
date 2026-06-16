@@ -98,7 +98,11 @@ export function generateMockData(sessionId: string, count: number): ScreeningRec
     let referral: Referral | undefined
 
     if (hasAssessment && questionnaire && vitals) {
-      assessment = calculateAssessment(person, questionnaire, vitals)
+      assessment = {
+        ...calculateAssessment(person, questionnaire, vitals),
+        isReassessment: false,
+        reassessmentCount: 0
+      }
       
       if (assessment.riskLevel === 'high') {
         referral = {
@@ -107,12 +111,21 @@ export function generateMockData(sessionId: string, count: number): ScreeningRec
           status: Math.random() > 0.5 ? 'pending' : 'referred',
           hospital: Math.random() > 0.5 ? '市第一人民医院' : '',
           referralDate: Math.random() > 0.5 ? new Date().toISOString().split('T')[0] : '',
-          followUpNote: ''
+          followUpNote: '',
+          followUpProgress: 'pending_contact',
+          followUpRecords: []
         }
       }
     }
 
-    records.push({ person, questionnaire, vitals, assessment, referral })
+    records.push({ 
+      person, 
+      questionnaire, 
+      vitals, 
+      assessment, 
+      referral,
+      assessmentHistory: assessment ? [assessment] : []
+    })
   }
 
   return records

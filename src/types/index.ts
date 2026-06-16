@@ -6,6 +6,10 @@ export type ScreeningStatus = 'pending' | 'registered' | 'questionnaire_done' | 
 
 export type ReferralStatus = 'pending' | 'referred' | 'completed' | 'cancelled'
 
+export type FollowUpStatus = 'pending_contact' | 'contacted' | 'scheduled' | 'arrived' | 'no_show' | 'completed'
+
+export type ReviewStatus = 'pending' | 'reviewed' | 'needs_review'
+
 export interface ScreeningSession {
   id: string
   name: string
@@ -70,6 +74,19 @@ export interface Assessment {
   needDeepInterview: boolean
   deepInterviewDone: boolean
   assessedAt: string
+  isReassessment: boolean
+  reassessmentCount: number
+  previousAssessmentId?: string
+}
+
+export interface FollowUpRecord {
+  id: string
+  referralId: string
+  status: FollowUpStatus
+  contactDate: string
+  contactPerson: string
+  note: string
+  createdAt: string
 }
 
 export interface Referral {
@@ -80,6 +97,19 @@ export interface Referral {
   referralDate: string
   followUpNote: string
   completedDate?: string
+  followUpProgress: FollowUpStatus
+  scheduledDate?: string
+  noShowReason?: string
+  followUpRecords: FollowUpRecord[]
+}
+
+export interface ReviewRecord {
+  id: string
+  personId: string
+  status: ReviewStatus
+  reviewedAt: string
+  reviewedBy: string
+  notes: string
 }
 
 export interface EducationTemplate {
@@ -95,4 +125,6 @@ export interface ScreeningRecord {
   vitals?: Vitals
   assessment?: Assessment
   referral?: Referral
+  review?: ReviewRecord
+  assessmentHistory: Assessment[]
 }

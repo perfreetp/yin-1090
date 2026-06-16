@@ -1,5 +1,9 @@
 import { create } from 'zustand'
-import type { ScreeningSession, ScreeningRecord, Person, Questionnaire, Vitals, Assessment, Referral, EducationTemplate } from '@/types'
+import type { 
+  ScreeningSession, ScreeningRecord, Person, Questionnaire, Vitals, 
+  Assessment, Referral, EducationTemplate, ReviewRecord, 
+  FollowUpRecord, FollowUpStatus, ReviewStatus 
+} from '@/types'
 import { getStorageItem, setStorageItem, generateId } from '@/utils/storage'
 import { calculateAssessment, calculateBMI } from '@/utils/assessment'
 import { mockSessions, generateMockData, mockEducationTemplates } from '@/mock/data'
@@ -23,10 +27,29 @@ interface AppState {
   saveQuestionnaire: (personId: string, data: Partial<Questionnaire>) => void
   saveVitals: (personId: string, data: Partial<Vitals>) => void
   performAssessment: (personId: string) => Assessment | null
+  rePerformAssessment: (personId: string) => Assessment | null
   saveDeepInterview: (personId: string, data: { familyFeedback: string; notes: string }) => void
   
   addReferral: (personId: string, hospital: string) => void
   updateReferralStatus: (personId: string, status: Referral['status'], note?: string) => void
+  updateReferralFollowUp: (personId: string, progress: FollowUpStatus, data?: {
+    scheduledDate?: string
+    noShowReason?: string
+  }) => void
+  addFollowUpRecord: (personId: string, data: {
+    status: FollowUpStatus
+    contactPerson: string
+    note: string
+  }) => void
+  
+  markAsReviewed: (personId: string, data: { reviewedBy: string; notes?: string }) => void
+  markAsNeedsReview: (personId: string, notes?: string) => void
+  getRecordsForReview: (filters?: {
+    riskLevel?: 'high' | 'medium' | 'low'
+    hasMissingData?: boolean
+    isReferred?: boolean
+    reviewStatus?: ReviewStatus
+  }) => ScreeningRecord[]
   
   getCompletedRecords: () => ScreeningRecord[]
   getPendingRecords: () => ScreeningRecord[]
@@ -46,6 +69,14 @@ interface AppState {
     lowRisk: number
     referralPending: number
     referralCompleted: number
+    reviewed: number
+    pendingReview: number
+    followUpPending: number
+    followUpContacted: number
+    followUpScheduled: number
+    followUpArrived: number
+    followUpNoShow: number
+    reassessed: number
   }
 }
 
@@ -74,7 +105,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (sessions.length === 0) {
       sessions = mockSessions
-      records = generateMockData(sessions[0].id, 20)
+      records = generateMockData(sessions[0].id, 20).map(r => ({
+        ...r,
+        assessmentHistory: r.assessment ? [r.assessment] : []
+      }))
       currentSessionId = sessions[0].id
       educationTemplates = mockEducationTemplates
 
@@ -112,7 +146,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       status: 'registered'
     }
     
-    const newRecord: ScreeningRecord = { person: newPerson }
+    const newRecord: ScreeningRecord = { 
+      person: newPerson, 
+      assessmentHistory: [] 
+    }
     const newRecords = [...records, newRecord]
     
     set({ records: newRecords, currentPersonId: newPerson.id })
@@ -206,13 +243,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null
     }
 
-    const assessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
+    const baseAssessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
+    const assessment: Assessment = {
+      ...baseAssessment,
+      isReassessment: false,
+      reassessmentCount: 0
+    }
     
     const newRecords = records.map(r => {
       if (r.person.id !== personId) return r
       return {
         ...r,
         assessment,
+        assessmentHistory: [...r.assessmentHistory, assessment],
         person: { ...r.person, status: 'completed' as const }
       }
     })
@@ -221,6 +264,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     setStorageItem(STORAGE_KEYS.records, newRecords)
     
     return assessment
+  },
+
+  rePerformAssessment: (personId) => {
+    const { records } = get()
+    const record = records.find(r => r.person.id === personId)
+    
+    if (!record || !record.questionnaire || !record.vitals || !record.assessment) {
+      return null
+    }
+
+    const v = record.vitals
+    if (!v.height || !v.weight || !v.systolicBp || !v.diastolicBp || !v.neckCircumference) {
+      return null
+    }
+
+    const previousAssessment = record.assessment
+    const newCount = previousAssessment.reassessmentCount + 1
+    
+    const baseAssessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
+    const newAssessment: Assessment = {
+      ...baseAssessment,
+      id: generateId('assessment'),
+      isReassessment: true,
+      reassessmentCount: newCount,
+      previousAssessmentId: previousAssessment.id
+    }
+    
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId) return r
+      return {
+        ...r,
+        assessment: newAssessment,
+        assessmentHistory: [...r.assessmentHistory, newAssessment],
+        review: r.review ? { ...r.review, status: 'needs_review' as const } : undefined
+      }
+    })
+    
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+    
+    return newAssessment
   },
 
   saveDeepInterview: (personId, data) => {
@@ -255,7 +339,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       status: 'referred',
       hospital,
       referralDate: new Date().toISOString().split('T')[0],
-      followUpNote: ''
+      followUpNote: '',
+      followUpProgress: 'pending_contact',
+      followUpRecords: []
     }
     
     const newRecords = records.map(r => 
@@ -281,6 +367,120 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
     set({ records: newRecords })
     setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  updateReferralFollowUp: (personId, progress, data) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId || !r.referral) return r
+      return {
+        ...r,
+        referral: {
+          ...r.referral,
+          followUpProgress: progress,
+          ...(data?.scheduledDate && { scheduledDate: data.scheduledDate }),
+          ...(data?.noShowReason && { noShowReason: data.noShowReason })
+        }
+      }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  addFollowUpRecord: (personId, data) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId || !r.referral) return r
+      
+      const followUpRecord: FollowUpRecord = {
+        id: generateId('fu'),
+        referralId: r.referral.id,
+        status: data.status,
+        contactDate: new Date().toISOString().split('T')[0],
+        contactPerson: data.contactPerson,
+        note: data.note,
+        createdAt: new Date().toISOString()
+      }
+      
+      return {
+        ...r,
+        referral: {
+          ...r.referral,
+          followUpProgress: data.status,
+          followUpRecords: [...r.referral.followUpRecords, followUpRecord]
+        }
+      }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  markAsReviewed: (personId, data) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId) return r
+      
+      const review: ReviewRecord = {
+        id: generateId('review'),
+        personId,
+        status: 'reviewed',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: data.reviewedBy,
+        notes: data.notes || ''
+      }
+      
+      return { ...r, review }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  markAsNeedsReview: (personId, notes) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (r.person.id !== personId) return r
+      
+      const review: ReviewRecord = {
+        id: generateId('review'),
+        personId,
+        status: 'needs_review',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: '',
+        notes: notes || ''
+      }
+      
+      return { ...r, review }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  getRecordsForReview: (filters) => {
+    const { currentSessionId, records } = get()
+    let result = records.filter(r => r.person.sessionId === currentSessionId && r.person.status === 'completed')
+    
+    if (filters) {
+      if (filters.riskLevel) {
+        result = result.filter(r => r.assessment?.riskLevel === filters.riskLevel)
+      }
+      if (filters.hasMissingData) {
+        result = result.filter(r => {
+          if (!r.questionnaire || !r.vitals) return true
+          const q = r.questionnaire
+          const v = r.vitals
+          return !q.medicalHistory || !v.waistCircumference
+        })
+      }
+      if (filters.isReferred) {
+        result = result.filter(r => !!r.referral)
+      }
+      if (filters.reviewStatus) {
+        result = result.filter(r => r.review?.status === filters.reviewStatus || 
+          (filters.reviewStatus === 'pending' && !r.review))
+      }
+    }
+    
+    return result
   },
 
   getCompletedRecords: () => {
@@ -344,12 +544,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     let highRisk = 0
     let mediumRisk = 0
     let lowRisk = 0
+    let reviewed = 0
+    let pendingReview = 0
+    let reassessed = 0
     
     sessionRecords.forEach(r => {
       if (r.assessment) {
         if (r.assessment.riskLevel === 'high') highRisk++
         else if (r.assessment.riskLevel === 'medium') mediumRisk++
         else lowRisk++
+        if (r.assessment.isReassessment) reassessed++
+      }
+      if (r.review) {
+        if (r.review.status === 'reviewed') reviewed++
+        else if (r.review.status === 'needs_review' || r.review.status === 'pending') pendingReview++
+      } else if (r.person.status === 'completed') {
+        pendingReview++
       }
     })
     
@@ -361,6 +571,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       r.referral && r.referral.status === 'completed'
     ).length
     
+    const followUpPending = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'pending_contact'
+    ).length
+    
+    const followUpContacted = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'contacted'
+    ).length
+    
+    const followUpScheduled = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'scheduled'
+    ).length
+    
+    const followUpArrived = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'arrived'
+    ).length
+    
+    const followUpNoShow = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'no_show'
+    ).length
+    
     return {
       total: sessionRecords.length,
       completed,
@@ -369,7 +599,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       mediumRisk,
       lowRisk,
       referralPending,
-      referralCompleted
+      referralCompleted,
+      reviewed,
+      pendingReview,
+      followUpPending,
+      followUpContacted,
+      followUpScheduled,
+      followUpArrived,
+      followUpNoShow,
+      reassessed
     }
   }
 }))

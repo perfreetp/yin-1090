@@ -146,6 +146,8 @@ export function calculateAssessment(
     scoreDetails,
     needDeepInterview,
     deepInterviewDone: false,
+    isReassessment: false,
+    reassessmentCount: 0,
     assessedAt: new Date().toISOString()
   }
 }
@@ -184,4 +186,46 @@ export function getReferralStatusText(status: string): string {
     cancelled: '已取消'
   }
   return map[status] || '-'
+}
+
+export function getFollowUpStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending_contact: '待联系',
+    contacted: '已联系家属',
+    scheduled: '已预约医院',
+    arrived: '已到院',
+    no_show: '未到院',
+    completed: '随访完成'
+  }
+  return map[status] || '-'
+}
+
+export function getFollowUpStatusColor(status: string): string {
+  const map: Record<string, string> = {
+    pending_contact: 'bg-gray-100 text-gray-700',
+    contacted: 'bg-blue-100 text-blue-700',
+    scheduled: 'bg-purple-100 text-purple-700',
+    arrived: 'bg-green-100 text-green-700',
+    no_show: 'bg-red-100 text-red-700',
+    completed: 'bg-emerald-100 text-emerald-700'
+  }
+  return map[status] || 'bg-gray-100 text-gray-700'
+}
+
+export function getReviewStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending: '待复核',
+    reviewed: '已复核',
+    needs_review: '需再核'
+  }
+  return map[status] || '待复核'
+}
+
+export function getReviewStatusColor(status: string): string {
+  const map: Record<string, string> = {
+    pending: 'bg-amber-100 text-amber-700',
+    reviewed: 'bg-green-100 text-green-700',
+    needs_review: 'bg-red-100 text-red-700'
+  }
+  return map[status] || 'bg-amber-100 text-amber-700'
 }
