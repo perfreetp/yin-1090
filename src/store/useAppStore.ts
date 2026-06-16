@@ -2,11 +2,31 @@ import { create } from 'zustand'
 import type { 
   ScreeningSession, ScreeningRecord, Person, Questionnaire, Vitals, 
   Assessment, Referral, EducationTemplate, ReviewRecord, 
-  FollowUpRecord, FollowUpStatus, ReviewStatus 
+  FollowUpRecord, FollowUpStatus, ReviewStatus, ModificationRecord, 
+  ArchiveSummary 
 } from '@/types'
 import { getStorageItem, setStorageItem, generateId } from '@/utils/storage'
 import { calculateAssessment, calculateBMI } from '@/utils/assessment'
 import { mockSessions, generateMockData, mockEducationTemplates } from '@/mock/data'
+
+interface ReviewerStat {
+  name: string
+  total: number
+  reviewed: number
+  pending: number
+}
+
+interface FollowUpAlert {
+  personId: string
+  personName: string
+  phone: string
+  alertType: 'upcoming' | 'overdue' | 'no_show'
+  daysUntilAppointment?: number
+  daysSinceLastContact?: number
+  noShowReason?: string
+  scheduledDate?: string
+  referral: Referral
+}
 
 interface AppState {
   currentSessionId: string
@@ -24,11 +44,14 @@ interface AppState {
   updatePerson: (id: string, data: Partial<Person>) => void
   getPersonById: (id: string) => ScreeningRecord | undefined
   
-  saveQuestionnaire: (personId: string, data: Partial<Questionnaire>) => void
-  saveVitals: (personId: string, data: Partial<Vitals>) => void
+  isSessionArchived: () => boolean
+  archiveSession: () => ArchiveSummary
+  saveQuestionnaire: (personId: string, data: Partial<Questionnaire>, modificationReason?: string) => void
+  saveVitals: (personId: string, data: Partial<Vitals>, modificationReason?: string) => void
   performAssessment: (personId: string) => Assessment | null
   rePerformAssessment: (personId: string) => Assessment | null
   saveDeepInterview: (personId: string, data: { familyFeedback: string; notes: string }) => void
+  recordModification: (personId: string, field: string, oldValue: string, newValue: string, reason: string, modifiedBy: string) => void
   
   addReferral: (personId: string, hospital: string) => void
   updateReferralStatus: (personId: string, status: Referral['status'], note?: string) => void
@@ -41,14 +64,19 @@ interface AppState {
     contactPerson: string
     note: string
   }) => void
+  getFollowUpAlerts: (daysThreshold?: number) => FollowUpAlert[]
   
   markAsReviewed: (personId: string, data: { reviewedBy: string; notes?: string }) => void
   markAsNeedsReview: (personId: string, notes?: string) => void
+  batchAssignReviewer: (personIds: string[], reviewer: string) => void
+  batchMarkReviewed: (personIds: string[], data: { reviewedBy: string; notes?: string }) => void
+  getReviewerStats: () => ReviewerStat[]
   getRecordsForReview: (filters?: {
     riskLevel?: 'high' | 'medium' | 'low'
     hasMissingData?: boolean
     isReferred?: boolean
     reviewStatus?: ReviewStatus
+    assignedReviewer?: string
   }) => ScreeningRecord[]
   
   getCompletedRecords: () => ScreeningRecord[]
@@ -76,6 +104,7 @@ interface AppState {
     followUpScheduled: number
     followUpArrived: number
     followUpNoShow: number
+    followUpCompleted: number
     reassessed: number
   }
 }
@@ -105,10 +134,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (sessions.length === 0) {
       sessions = mockSessions
-      records = generateMockData(sessions[0].id, 20).map(r => ({
-        ...r,
-        assessmentHistory: r.assessment ? [r.assessment] : []
-      }))
+      records = generateMockData(sessions[0].id, 20)
       currentSessionId = sessions[0].id
       educationTemplates = mockEducationTemplates
 
@@ -136,6 +162,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ currentPersonId: personId })
   },
 
+  isSessionArchived: () => {
+    const { currentSessionId, sessions } = get()
+    const session = sessions.find(s => s.id === currentSessionId)
+    return session?.isArchived || false
+  },
+
+  archiveSession: () => {
+    const { currentSessionId, sessions, records } = get()
+    const sessionRecords = records.filter(r => r.person.sessionId === currentSessionId)
+    
+    const completedPeople = sessionRecords.filter(r => r.person.status === 'completed')
+    const incompletePeople = sessionRecords.filter(r => r.person.status !== 'completed')
+    const pendingReview = completedPeople.filter(r => !r.review || r.review.status !== 'reviewed')
+    const pendingFollowUp = sessionRecords.filter(r => r.referral && r.referral.followUpProgress !== 'arrived' && r.referral.followUpProgress !== 'completed')
+    const highRiskPeople = completedPeople.filter(r => r.assessment?.riskLevel === 'high')
+
+    const summary: ArchiveSummary = {
+      totalPeople: sessionRecords.length,
+      completedPeople: completedPeople.length,
+      incompletePeople: incompletePeople.length,
+      pendingReview: pendingReview.length,
+      pendingFollowUp: pendingFollowUp.length,
+      highRiskList: highRiskPeople.map(r => ({
+        name: r.person.name,
+        age: r.person.age,
+        gender: r.person.gender,
+        phone: r.person.phone,
+        riskLevel: r.assessment!.riskLevel,
+        referralStatus: r.referral?.status
+      })),
+      incompleteList: incompletePeople.map(r => ({
+        name: r.person.name,
+        age: r.person.age,
+        gender: r.person.gender,
+        status: r.person.status
+      }))
+    }
+
+    const newSessions = sessions.map(s => 
+      s.id === currentSessionId 
+        ? { ...s, isArchived: true, archivedAt: new Date().toISOString(), archiveSummary: summary }
+        : s
+    )
+
+    set({ sessions: newSessions })
+    setStorageItem(STORAGE_KEYS.sessions, newSessions)
+
+    return summary
+  },
+
   addPerson: (data) => {
     const { currentSessionId, records } = get()
     const newPerson: Person = {
@@ -148,7 +224,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     const newRecord: ScreeningRecord = { 
       person: newPerson, 
-      assessmentHistory: [] 
+      assessmentHistory: [],
+      modificationRecords: []
     }
     const newRecords = [...records, newRecord]
     
@@ -171,7 +248,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     return get().records.find(r => r.person.id === id)
   },
 
-  saveQuestionnaire: (personId, data) => {
+  recordModification: (personId, field, oldValue, newValue, reason, modifiedBy) => {
+    const { records } = get()
+    const mod: ModificationRecord = {
+      id: generateId('mod'),
+      personId,
+      field,
+      oldValue,
+      newValue,
+      reason,
+      modifiedBy,
+      modifiedAt: new Date().toISOString()
+    }
+    const newRecords = records.map(r => 
+      r.person.id === personId 
+        ? { ...r, modificationRecords: [...r.modificationRecords, mod] }
+        : r
+    )
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  saveQuestionnaire: (personId, data, modificationReason) => {
     const { records } = get()
     const newRecords = records.map(r => {
       if (r.person.id !== personId) return r
@@ -198,7 +296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     setStorageItem(STORAGE_KEYS.records, newRecords)
   },
 
-  saveVitals: (personId, data) => {
+  saveVitals: (personId, data, modificationReason) => {
     const { records } = get()
     const newRecords = records.map(r => {
       if (r.person.id !== personId) return r
@@ -415,6 +513,66 @@ export const useAppStore = create<AppState>((set, get) => ({
     setStorageItem(STORAGE_KEYS.records, newRecords)
   },
 
+  getFollowUpAlerts: (daysThreshold = 3) => {
+    const { currentSessionId, records } = get()
+    const now = new Date()
+    const alerts: FollowUpAlert[] = []
+
+    records.filter(r => r.person.sessionId === currentSessionId && r.referral).forEach(r => {
+      const ref = r.referral!
+      
+      if (ref.followUpProgress === 'scheduled' && ref.scheduledDate) {
+        const scheduledDate = new Date(ref.scheduledDate)
+        const diffDays = Math.ceil((scheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        if (diffDays <= daysThreshold) {
+          alerts.push({
+            personId: r.person.id,
+            personName: r.person.name,
+            phone: r.person.phone,
+            alertType: 'upcoming',
+            daysUntilAppointment: diffDays,
+            scheduledDate: ref.scheduledDate,
+            referral: ref
+          })
+        }
+      }
+
+      if (ref.followUpProgress === 'pending_contact' || ref.followUpProgress === 'contacted') {
+        const lastRecord = ref.followUpRecords.length > 0 
+          ? ref.followUpRecords[ref.followUpRecords.length - 1]
+          : null
+        const lastDate = lastRecord ? new Date(lastRecord.createdAt) : new Date(ref.referralDate)
+        const diffDays = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+        if (diffDays >= daysThreshold) {
+          alerts.push({
+            personId: r.person.id,
+            personName: r.person.name,
+            phone: r.person.phone,
+            alertType: 'overdue',
+            daysSinceLastContact: diffDays,
+            referral: ref
+          })
+        }
+      }
+
+      if (ref.followUpProgress === 'no_show') {
+        alerts.push({
+          personId: r.person.id,
+          personName: r.person.name,
+          phone: r.person.phone,
+          alertType: 'no_show',
+          noShowReason: ref.noShowReason,
+          referral: ref
+        })
+      }
+    })
+
+    return alerts.sort((a, b) => {
+      const priority = { overdue: 0, no_show: 1, upcoming: 2 }
+      return priority[a.alertType] - priority[b.alertType]
+    })
+  },
+
   markAsReviewed: (personId, data) => {
     const { records } = get()
     const newRecords = records.map(r => {
@@ -426,7 +584,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         status: 'reviewed',
         reviewedAt: new Date().toISOString(),
         reviewedBy: data.reviewedBy,
-        notes: data.notes || ''
+        notes: data.notes || '',
+        assignedReviewer: r.review?.assignedReviewer
       }
       
       return { ...r, review }
@@ -446,13 +605,85 @@ export const useAppStore = create<AppState>((set, get) => ({
         status: 'needs_review',
         reviewedAt: new Date().toISOString(),
         reviewedBy: '',
-        notes: notes || ''
+        notes: notes || '',
+        assignedReviewer: r.review?.assignedReviewer
       }
       
       return { ...r, review }
     })
     set({ records: newRecords })
     setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  batchAssignReviewer: (personIds, reviewer) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (!personIds.includes(r.person.id)) return r
+      
+      const review: ReviewRecord = r.review || {
+        id: generateId('review'),
+        personId: r.person.id,
+        status: 'pending',
+        reviewedAt: '',
+        reviewedBy: '',
+        notes: ''
+      }
+      
+      return { ...r, review: { ...review, assignedReviewer: reviewer } }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  batchMarkReviewed: (personIds, data) => {
+    const { records } = get()
+    const newRecords = records.map(r => {
+      if (!personIds.includes(r.person.id)) return r
+      
+      const review: ReviewRecord = {
+        id: generateId('review'),
+        personId: r.person.id,
+        status: 'reviewed',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: data.reviewedBy,
+        notes: data.notes || '',
+        assignedReviewer: r.review?.assignedReviewer
+      }
+      
+      return { ...r, review }
+    })
+    set({ records: newRecords })
+    setStorageItem(STORAGE_KEYS.records, newRecords)
+  },
+
+  getReviewerStats: () => {
+    const { currentSessionId, records } = get()
+    const sessionRecords = records.filter(r => 
+      r.person.sessionId === currentSessionId && r.person.status === 'completed'
+    )
+    
+    const reviewerMap = new Map<string, { total: number; reviewed: number; pending: number }>()
+    
+    sessionRecords.forEach(r => {
+      const reviewer = r.review?.assignedReviewer
+      if (!reviewer) return
+      
+      if (!reviewerMap.has(reviewer)) {
+        reviewerMap.set(reviewer, { total: 0, reviewed: 0, pending: 0 })
+      }
+      const stat = reviewerMap.get(reviewer)!
+      stat.total++
+      if (r.review?.status === 'reviewed') {
+        stat.reviewed++
+      } else {
+        stat.pending++
+      }
+    })
+
+    return Array.from(reviewerMap.entries()).map(([name, stat]) => ({
+      name,
+      ...stat
+    }))
   },
 
   getRecordsForReview: (filters) => {
@@ -477,6 +708,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (filters.reviewStatus) {
         result = result.filter(r => r.review?.status === filters.reviewStatus || 
           (filters.reviewStatus === 'pending' && !r.review))
+      }
+      if (filters.assignedReviewer) {
+        result = result.filter(r => r.review?.assignedReviewer === filters.assignedReviewer)
       }
     }
     
@@ -590,6 +824,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const followUpNoShow = sessionRecords.filter(r => 
       r.referral && r.referral.followUpProgress === 'no_show'
     ).length
+
+    const followUpCompleted = sessionRecords.filter(r => 
+      r.referral && r.referral.followUpProgress === 'completed'
+    ).length
     
     return {
       total: sessionRecords.length,
@@ -607,6 +845,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       followUpScheduled,
       followUpArrived,
       followUpNoShow,
+      followUpCompleted,
       reassessed
     }
   }

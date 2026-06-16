@@ -58,7 +58,27 @@ export default function AssessmentPage() {
       const record = getPersonById(personId)
       
       if (record?.assessment) {
-        setAssessment(record.assessment)
+        if (record.person.status === 'completed' && record.questionnaire && record.vitals) {
+          const v = record.vitals
+          if (v.height && v.weight && v.systolicBp && v.diastolicBp && v.neckCircumference) {
+            const freshResult = rePerformAssessment(personId)
+            if (freshResult) {
+              setAssessment(freshResult)
+              const updated = getPersonById(personId)
+              if (updated?.assessmentHistory && updated.assessmentHistory.length >= 2) {
+                const len = updated.assessmentHistory.length
+                setPreviousAssessment(updated.assessmentHistory[len - 2])
+                setShowDiff(true)
+              }
+            } else {
+              setAssessment(record.assessment)
+            }
+          } else {
+            setAssessment(record.assessment)
+          }
+        } else {
+          setAssessment(record.assessment)
+        }
         setMissingFields([])
         if (record.questionnaire) {
           setDeepInterviewData({
@@ -100,7 +120,7 @@ export default function AssessmentPage() {
         }
       }
     }
-  }, [personId, getPersonById, performAssessment, setCurrentPerson])
+  }, [personId, getPersonById, performAssessment, rePerformAssessment, setCurrentPerson])
 
   const record = personId ? getPersonById(personId) : undefined
 

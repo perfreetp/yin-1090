@@ -35,6 +35,7 @@ export default function Statistics() {
     { name: '已预约', value: stats.followUpScheduled, color: '#a855f7' },
     { name: '已到院', value: stats.followUpArrived, color: '#22c55e' },
     { name: '未到院', value: stats.followUpNoShow, color: '#ef4444' },
+    { name: '随访完成', value: stats.followUpCompleted, color: '#10b981' },
   ]
 
   const reviewDistribution = [

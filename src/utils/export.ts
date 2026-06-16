@@ -28,6 +28,7 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
     '是否重新评估',
     '重评次数',
     '复核状态',
+    '分派复核人',
     '复核人',
     '复核时间',
     '复核备注',
@@ -36,6 +37,7 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
     '随访进度',
     '预约日期',
     '未到院原因',
+    '修改次数',
     '建档时间',
     '筛查完成时间'
   ]
@@ -72,6 +74,7 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
       assessment?.isReassessment ? '是' : '否',
       assessment?.reassessmentCount || 0,
       reviewStatus ? getReviewStatusText(reviewStatus) : '-',
+      review?.assignedReviewer || '-',
       review?.reviewedBy || '-',
       review?.reviewedAt ? formatDateTime(review.reviewedAt) : '-',
       review?.notes || '-',
@@ -80,6 +83,7 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
       referral?.followUpProgress ? getFollowUpStatusText(referral.followUpProgress) : '-',
       referral?.scheduledDate || '-',
       referral?.noShowReason || '-',
+      record.modificationRecords?.length || 0,
       person.createdAt ? formatDateTime(person.createdAt) : '-',
       assessment?.assessedAt ? formatDateTime(assessment.assessedAt) : '-'
     ]

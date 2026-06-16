@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Home, UserPlus, ClipboardList, HeartPulse, Activity, FileText, BarChart3, BookOpen, CheckSquare } from 'lucide-react'
+import { Home, UserPlus, ClipboardList, HeartPulse, Activity, FileText, BarChart3, BookOpen, CheckSquare, Archive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface LayoutProps {
@@ -15,6 +15,7 @@ const navItems = [
   { path: '/assessment', label: '风险判定', icon: Activity },
   { path: '/referral', label: '转诊清单', icon: FileText },
   { path: '/review', label: '复核台', icon: CheckSquare },
+  { path: '/archive', label: '归档管理', icon: Archive },
   { path: '/statistics', label: '统计中心', icon: BarChart3 },
   { path: '/education', label: '宣教话术', icon: BookOpen },
 ]

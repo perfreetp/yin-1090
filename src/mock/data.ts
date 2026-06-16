@@ -10,7 +10,8 @@ export const mockSessions: ScreeningSession[] = [
     location: '阳光社区卫生服务中心',
     type: 'group',
     totalCount: 50,
-    completedCount: 32
+    completedCount: 32,
+    isArchived: false
   },
   {
     id: 'session_002',
@@ -19,7 +20,8 @@ export const mockSessions: ScreeningSession[] = [
     location: '幸福里老年活动中心',
     type: 'activity',
     totalCount: 30,
-    completedCount: 30
+    completedCount: 30,
+    isArchived: false
   }
 ]
 
@@ -124,7 +126,8 @@ export function generateMockData(sessionId: string, count: number): ScreeningRec
       vitals, 
       assessment, 
       referral,
-      assessmentHistory: assessment ? [assessment] : []
+      assessmentHistory: assessment ? [assessment] : [],
+      modificationRecords: []
     })
   }
 

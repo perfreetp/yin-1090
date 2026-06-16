@@ -10,6 +10,27 @@ export type FollowUpStatus = 'pending_contact' | 'contacted' | 'scheduled' | 'ar
 
 export type ReviewStatus = 'pending' | 'reviewed' | 'needs_review'
 
+export interface ArchiveSummary {
+  totalPeople: number
+  completedPeople: number
+  incompletePeople: number
+  pendingReview: number
+  pendingFollowUp: number
+  highRiskList: { name: string; age: number; gender: Gender; phone: string; riskLevel: RiskLevel; referralStatus?: ReferralStatus }[]
+  incompleteList: { name: string; age: number; gender: Gender; status: ScreeningStatus }[]
+}
+
+export interface ModificationRecord {
+  id: string
+  personId: string
+  field: string
+  oldValue: string
+  newValue: string
+  reason: string
+  modifiedBy: string
+  modifiedAt: string
+}
+
 export interface ScreeningSession {
   id: string
   name: string
@@ -18,6 +39,9 @@ export interface ScreeningSession {
   type: 'group' | 'home' | 'activity'
   totalCount: number
   completedCount: number
+  isArchived: boolean
+  archivedAt?: string
+  archiveSummary?: ArchiveSummary
 }
 
 export interface Person {
@@ -110,6 +134,7 @@ export interface ReviewRecord {
   reviewedAt: string
   reviewedBy: string
   notes: string
+  assignedReviewer?: string
 }
 
 export interface EducationTemplate {
@@ -127,4 +152,5 @@ export interface ScreeningRecord {
   referral?: Referral
   review?: ReviewRecord
   assessmentHistory: Assessment[]
+  modificationRecords: ModificationRecord[]
 }
