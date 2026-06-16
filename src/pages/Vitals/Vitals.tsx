@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Ruler, Scale, Activity, RefreshCw } from 'lucide-react'
+import { Ruler, Scale, Activity, RefreshCw, AlertCircle } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { calculateBMI } from '@/utils/assessment'
 import PageHeader from '@/components/Layout/PageHeader'
@@ -34,6 +34,7 @@ export default function VitalsPage() {
   })
 
   const [bmi, setBmi] = useState<number>(0)
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (personId) {
@@ -41,12 +42,12 @@ export default function VitalsPage() {
       if (record?.vitals) {
         const v = record.vitals
         setFormData({
-          height: v.height?.toString() || '',
-          weight: v.weight?.toString() || '',
-          systolicBp: v.systolicBp?.toString() || '',
-          diastolicBp: v.diastolicBp?.toString() || '',
-          neckCircumference: v.neckCircumference?.toString() || '',
-          waistCircumference: v.waistCircumference?.toString() || ''
+          height: v.height > 0 ? v.height.toString() : '',
+          weight: v.weight > 0 ? v.weight.toString() : '',
+          systolicBp: v.systolicBp > 0 ? v.systolicBp.toString() : '',
+          diastolicBp: v.diastolicBp > 0 ? v.diastolicBp.toString() : '',
+          neckCircumference: v.neckCircumference > 0 ? v.neckCircumference.toString() : '',
+          waistCircumference: v.waistCircumference > 0 ? v.waistCircumference.toString() : ''
         })
         setBmi(v.bmi)
       }
@@ -66,6 +67,13 @@ export default function VitalsPage() {
 
   const handleInputChange = (field: keyof VitalsForm, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    if (errors[field]) {
+      setErrors(prev => {
+        const next = { ...prev }
+        delete next[field]
+        return next
+      })
+    }
   }
 
   const getBmiStatus = () => {
@@ -78,23 +86,59 @@ export default function VitalsPage() {
 
   const bmiStatus = getBmiStatus()
 
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {}
+    
+    if (!formData.height || parseFloat(formData.height) <= 0) {
+      newErrors.height = '请填写身高'
+    }
+    if (!formData.weight || parseFloat(formData.weight) <= 0) {
+      newErrors.weight = '请填写体重'
+    }
+    if (!formData.systolicBp || parseInt(formData.systolicBp) <= 0) {
+      newErrors.systolicBp = '请填写收缩压'
+    }
+    if (!formData.diastolicBp || parseInt(formData.diastolicBp) <= 0) {
+      newErrors.diastolicBp = '请填写舒张压'
+    }
+    if (!formData.neckCircumference || parseFloat(formData.neckCircumference) <= 0) {
+      newErrors.neckCircumference = '请填写颈围'
+    }
+
+    setErrors(newErrors)
+    
+    if (Object.keys(newErrors).length > 0) {
+      const fieldLabels: Record<string, string> = {
+        height: '身高',
+        weight: '体重',
+        systolicBp: '收缩压',
+        diastolicBp: '舒张压',
+        neckCircumference: '颈围'
+      }
+      const missingFields = Object.keys(newErrors).map(k => fieldLabels[k]).join('、')
+      alert(`请补全必填项：${missingFields}`)
+      return false
+    }
+    
+    return true
+  }
+
   const handleSubmit = () => {
     if (!personId) {
       navigate('/registration')
       return
     }
 
-    if (!formData.height || !formData.weight) {
-      alert('请填写身高和体重')
+    if (!validateForm()) {
       return
     }
 
     saveVitals(personId, {
       height: parseFloat(formData.height),
       weight: parseFloat(formData.weight),
-      systolicBp: formData.systolicBp ? parseInt(formData.systolicBp) : undefined,
-      diastolicBp: formData.diastolicBp ? parseInt(formData.diastolicBp) : undefined,
-      neckCircumference: formData.neckCircumference ? parseFloat(formData.neckCircumference) : undefined,
+      systolicBp: parseInt(formData.systolicBp),
+      diastolicBp: parseInt(formData.diastolicBp),
+      neckCircumference: parseFloat(formData.neckCircumference),
       waistCircumference: formData.waistCircumference ? parseFloat(formData.waistCircumference) : undefined
     })
 
@@ -102,6 +146,12 @@ export default function VitalsPage() {
   }
 
   const record = personId ? getPersonById(personId) : undefined
+
+  const requiredLabel = (label: string) => (
+    <span>
+      {label} <span className="text-red-500">*</span>
+    </span>
+  )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -134,29 +184,44 @@ export default function VitalsPage() {
             </Card>
           )}
 
+          <Card className="border-amber-200 bg-amber-50/50">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800">
+                <p className="font-medium">重要提示</p>
+                <p className="mt-1">身高、体重、血压、颈围为<span className="font-bold">必填项</span>，未填写完整将无法进行风险判定。</p>
+              </div>
+            </div>
+          </Card>
+
           <Card>
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2.5 bg-green-100 rounded-lg">
                 <Scale className="w-5 h-5 text-green-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">身体测量</h3>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">身体测量</h3>
+                <p className="text-xs text-gray-400 mt-0.5">必填项</p>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-6">
               <Input
-                label="身高"
+                label={requiredLabel('身高')}
                 type="number"
                 placeholder="请输入身高"
                 suffix="cm"
                 value={formData.height}
+                error={errors.height}
                 onChange={(e) => handleInputChange('height', e.target.value)}
               />
               <Input
-                label="体重"
+                label={requiredLabel('体重')}
                 type="number"
                 placeholder="请输入体重"
                 suffix="kg"
                 value={formData.weight}
+                error={errors.weight}
                 onChange={(e) => handleInputChange('weight', e.target.value)}
               />
             </div>
@@ -167,24 +232,29 @@ export default function VitalsPage() {
               <div className="p-2.5 bg-red-100 rounded-lg">
                 <Activity className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">血压</h3>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">血压</h3>
+                <p className="text-xs text-gray-400 mt-0.5">必填项</p>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-6">
               <Input
-                label="收缩压（高压）"
+                label={requiredLabel('收缩压（高压）')}
                 type="number"
                 placeholder="请输入收缩压"
                 suffix="mmHg"
                 value={formData.systolicBp}
+                error={errors.systolicBp}
                 onChange={(e) => handleInputChange('systolicBp', e.target.value)}
               />
               <Input
-                label="舒张压（低压）"
+                label={requiredLabel('舒张压（低压）')}
                 type="number"
                 placeholder="请输入舒张压"
                 suffix="mmHg"
                 value={formData.diastolicBp}
+                error={errors.diastolicBp}
                 onChange={(e) => handleInputChange('diastolicBp', e.target.value)}
               />
             </div>
@@ -207,22 +277,26 @@ export default function VitalsPage() {
               <div className="p-2.5 bg-purple-100 rounded-lg">
                 <Ruler className="w-5 h-5 text-purple-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">围度测量</h3>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">围度测量</h3>
+                <p className="text-xs text-gray-400 mt-0.5">颈围必填，腰围选填</p>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-6">
               <Input
-                label="颈围"
+                label={requiredLabel('颈围')}
                 type="number"
                 placeholder="请输入颈围"
                 suffix="cm"
                 value={formData.neckCircumference}
+                error={errors.neckCircumference}
                 onChange={(e) => handleInputChange('neckCircumference', e.target.value)}
               />
               <Input
                 label="腰围"
                 type="number"
-                placeholder="请输入腰围"
+                placeholder="请输入腰围（选填）"
                 suffix="cm"
                 value={formData.waistCircumference}
                 onChange={(e) => handleInputChange('waistCircumference', e.target.value)}

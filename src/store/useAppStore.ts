@@ -32,6 +32,10 @@ interface AppState {
   getPendingRecords: () => ScreeningRecord[]
   getHighRiskRecords: () => ScreeningRecord[]
   getReferralRecords: () => ScreeningRecord[]
+  getCurrentSessionRecords: () => ScreeningRecord[]
+  
+  addEducationTemplate: (data: Omit<EducationTemplate, 'id'>) => void
+  updateEducationTemplate: (id: string, data: Partial<Omit<EducationTemplate, 'id'>>) => void
   
   getStatistics: () => {
     total: number
@@ -197,6 +201,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return null
     }
 
+    const v = record.vitals
+    if (!v.height || !v.weight || !v.systolicBp || !v.diastolicBp || !v.neckCircumference) {
+      return null
+    }
+
     const assessment = calculateAssessment(record.person, record.questionnaire, record.vitals)
     
     const newRecords = records.map(r => {
@@ -298,6 +307,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       r.person.sessionId === currentSessionId && 
       r.referral
     )
+  },
+
+  getCurrentSessionRecords: () => {
+    const { currentSessionId, records } = get()
+    return records.filter(r => r.person.sessionId === currentSessionId)
+  },
+
+  addEducationTemplate: (data) => {
+    const { educationTemplates } = get()
+    const newTemplate: EducationTemplate = {
+      id: generateId('edu'),
+      ...data
+    }
+    const newTemplates = [...educationTemplates, newTemplate]
+    set({ educationTemplates: newTemplates })
+    setStorageItem(STORAGE_KEYS.educationTemplates, newTemplates)
+  },
+
+  updateEducationTemplate: (id, data) => {
+    const { educationTemplates } = get()
+    const newTemplates = educationTemplates.map(t => 
+      t.id === id ? { ...t, ...data } : t
+    )
+    set({ educationTemplates: newTemplates })
+    setStorageItem(STORAGE_KEYS.educationTemplates, newTemplates)
   },
 
   getStatistics: () => {

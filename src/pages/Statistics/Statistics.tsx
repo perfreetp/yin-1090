@@ -1,20 +1,27 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet } from 'lucide-react'
+import { BarChart3, PieChart, Download, Users, AlertTriangle, TrendingUp, Calendar, FileSpreadsheet, ListChecks } from 'lucide-react'
 import { PieChart as RechartsPie, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
 import { exportToCSV } from '@/utils/export'
+import { getStatusText, getRiskLevelText, getReferralStatusText } from '@/utils/assessment'
 import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Card/Card'
 import Button from '@/components/Button/Button'
 import StatCard from '@/components/Card/StatCard'
+import { RiskBadge, StatusBadge, ReferralBadge } from '@/components/Badge/Badge'
 
 export default function Statistics() {
   const navigate = useNavigate()
-  const { getStatistics, getCompletedRecords, sessions, currentSessionId, setCurrentSession } = useAppStore()
+  const { getStatistics, getCompletedRecords, getCurrentSessionRecords, sessions, currentSessionId, setCurrentSession } = useAppStore()
   
   const stats = getStatistics()
   const completedRecords = getCompletedRecords()
+  const allSessionRecords = getCurrentSessionRecords()
+
+  const [activeTab, setActiveTab] = useState<'completed' | 'all'>('completed')
+  const [visibleCount, setVisibleCount] = useState(10)
+  const [allVisibleCount, setAllVisibleCount] = useState(10)
 
   const riskDistribution = [
     { name: '低风险', value: stats.lowRisk, color: '#22c55e' },
@@ -41,7 +48,23 @@ export default function Statistics() {
     : '0'
 
   const handleExport = () => {
-    exportToCSV(completedRecords)
+    const session = sessions.find(s => s.id === currentSessionId)
+    const filename = session 
+      ? `${session.name}_筛查数据_${new Date().toISOString().split('T')[0]}.csv`
+      : undefined
+    exportToCSV(allSessionRecords, filename)
+  }
+
+  const displayRecords = activeTab === 'completed' ? completedRecords : allSessionRecords
+  const currentVisibleCount = activeTab === 'completed' ? visibleCount : allVisibleCount
+  const setCurrentVisibleCount = activeTab === 'completed' ? setVisibleCount : setAllVisibleCount
+
+  const handleLoadMore = () => {
+    setCurrentVisibleCount(prev => prev + 10)
+  }
+
+  const handleShowAll = () => {
+    setCurrentVisibleCount(displayRecords.length)
   }
 
   return (
@@ -54,7 +77,7 @@ export default function Statistics() {
         rightContent={
           <Button onClick={handleExport} variant="outline">
             <Download className="w-4 h-4 mr-2" />
-            导出数据
+            导出整场数据
           </Button>
         }
       />
@@ -68,7 +91,11 @@ export default function Statistics() {
             {sessions.map(session => (
               <button
                 key={session.id}
-                onClick={() => setCurrentSession(session.id)}
+                onClick={() => {
+                  setCurrentSession(session.id)
+                  setVisibleCount(10)
+                  setAllVisibleCount(10)
+                }}
                 className={`flex-1 p-4 rounded-xl border-2 text-left transition-all ${
                   session.id === currentSessionId
                     ? 'border-blue-500 bg-blue-50'
@@ -172,68 +199,173 @@ export default function Statistics() {
         </div>
 
         <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-900">已完成筛查列表</h3>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              共 {stats.completed} 条记录
+          <div className="flex items-center justify-between mb-4 border-b border-gray-100 -mx-6 px-6 pb-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveTab('completed')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  activeTab === 'completed'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <ListChecks className="w-4 h-4" />
+                已完成筛查
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  activeTab === 'completed' ? 'bg-white/20' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {stats.completed}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  activeTab === 'all'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                完整筛查名单
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  activeTab === 'all' ? 'bg-white/20' : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {stats.total}
+                </span>
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              {displayRecords.length > currentVisibleCount && (
+                <Button variant="ghost" size="sm" onClick={handleShowAll}>
+                  展开全部
+                </Button>
+              )}
+              <div className="text-sm text-gray-500">
+                显示 {Math.min(currentVisibleCount, displayRecords.length)} / {displayRecords.length} 条
+              </div>
             </div>
           </div>
           
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">姓名</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">性别</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">年龄</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">BMI</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">血压</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">总分</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">风险等级</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-500">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completedRecords.slice(0, 10).map(record => (
-                  <tr key={record.person.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-gray-900">{record.person.name}</td>
-                    <td className="py-3 px-4 text-gray-600">{record.person.gender === 'male' ? '男' : '女'}</td>
-                    <td className="py-3 px-4 text-gray-600">{record.person.age}岁</td>
-                    <td className="py-3 px-4 text-gray-600">{record.vitals?.bmi || '-'}</td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {record.vitals?.systolicBp || '-'}/{record.vitals?.diastolicBp || '-'}
-                    </td>
-                    <td className="py-3 px-4 font-medium text-gray-900">
-                      {record.assessment?.totalScore || 0}分
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        record.assessment?.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
-                        record.assessment?.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {record.assessment?.riskLevel === 'high' ? '高风险' :
-                         record.assessment?.riskLevel === 'medium' ? '中风险' : '低风险'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => navigate(`/screening/${record.person.id}`)}
-                        className="text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        查看
-                      </button>
-                    </td>
+            {activeTab === 'completed' ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">姓名</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">性别</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">年龄</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">BMI</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">血压</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">总分</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">风险等级</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">转诊状态</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {displayRecords.slice(0, currentVisibleCount).map(record => (
+                    <tr key={record.person.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 font-medium text-gray-900">{record.person.name}</td>
+                      <td className="py-3 px-4 text-gray-600">{record.person.gender === 'male' ? '男' : '女'}</td>
+                      <td className="py-3 px-4 text-gray-600">{record.person.age}岁</td>
+                      <td className="py-3 px-4 text-gray-600">{record.vitals?.bmi || '-'}</td>
+                      <td className="py-3 px-4 text-gray-600">
+                        {record.vitals?.systolicBp || '-'}/{record.vitals?.diastolicBp || '-'}
+                      </td>
+                      <td className="py-3 px-4 font-medium text-gray-900">
+                        {record.assessment?.totalScore || 0}分
+                      </td>
+                      <td className="py-3 px-4">
+                        <RiskBadge level={record.assessment?.riskLevel || 'low'} size="sm" />
+                      </td>
+                      <td className="py-3 px-4">
+                        {record.referral ? (
+                          <ReferralBadge status={record.referral.status} size="sm" />
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => navigate(`/screening/${record.person.id}`)}
+                          className="text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          查看
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">序号</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">姓名</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">性别</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">年龄</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">联系电话</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">筛查状态</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">风险等级</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">转诊状态</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRecords.slice(0, currentVisibleCount).map((record, idx) => (
+                    <tr key={record.person.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 text-gray-500">{idx + 1}</td>
+                      <td className="py-3 px-4 font-medium text-gray-900">{record.person.name}</td>
+                      <td className="py-3 px-4 text-gray-600">{record.person.gender === 'male' ? '男' : '女'}</td>
+                      <td className="py-3 px-4 text-gray-600">{record.person.age}岁</td>
+                      <td className="py-3 px-4 text-gray-600">{record.person.phone || '-'}</td>
+                      <td className="py-3 px-4">
+                        <StatusBadge status={record.person.status} size="sm" />
+                      </td>
+                      <td className="py-3 px-4">
+                        {record.assessment ? (
+                          <RiskBadge level={record.assessment.riskLevel} size="sm" />
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {record.referral ? (
+                          <ReferralBadge status={record.referral.status} size="sm" />
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => {
+                            if (record.person.status === 'registered') {
+                              navigate(`/questionnaire/${record.person.id}`)
+                            } else if (record.person.status === 'questionnaire_done') {
+                              navigate(`/vitals/${record.person.id}`)
+                            } else {
+                              navigate(`/screening/${record.person.id}`)
+                            }
+                          }}
+                          className="text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          {record.person.status === 'registered' ? '去问诊' :
+                           record.person.status === 'questionnaire_done' ? '去体测' :
+                           record.person.status === 'vitals_done' ? '去评估' : '查看'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
           
-          {completedRecords.length > 10 && (
-            <div className="text-center pt-4">
-              <Button variant="outline" size="sm">
-                加载更多
+          {displayRecords.length > currentVisibleCount && (
+            <div className="text-center pt-4 flex items-center justify-center gap-3">
+              <Button variant="outline" size="sm" onClick={handleLoadMore}>
+                加载更多（+10条）
               </Button>
             </div>
           )}

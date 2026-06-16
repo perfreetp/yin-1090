@@ -13,7 +13,7 @@ export function calculateAssessment(
 ): Assessment {
   const scoreDetails: ScoreDetail[] = []
   let totalScore = 0
-  const maxScore = 8
+  const maxScore = 11
 
   const ageScore = person.age >= 50 ? 1 : 0
   scoreDetails.push({
@@ -84,19 +84,52 @@ export function calculateAssessment(
   })
   totalScore += sleepinessScore
 
-  const hypertensionScore = questionnaire.hasHypertension ? 1 : 0
+  const hypertensionHistoryScore = questionnaire.hasHypertension ? 1 : 0
   scoreDetails.push({
-    name: '高血压',
-    score: hypertensionScore,
+    name: '高血压病史',
+    score: hypertensionHistoryScore,
     maxScore: 1,
     description: questionnaire.hasHypertension ? '有高血压病史' : '无高血压病史'
   })
-  totalScore += hypertensionScore
+  totalScore += hypertensionHistoryScore
+
+  const hasHighBp = vitals.systolicBp >= 140 || vitals.diastolicBp >= 90
+  const bpScore = hasHighBp ? 1 : 0
+  scoreDetails.push({
+    name: '现场血压',
+    score: bpScore,
+    maxScore: 1,
+    description: hasHighBp
+      ? `血压 ${vitals.systolicBp}/${vitals.diastolicBp}mmHg 偏高`
+      : `血压 ${vitals.systolicBp}/${vitals.diastolicBp}mmHg 正常`
+  })
+  totalScore += bpScore
+
+  const hasDiabetes = questionnaire.medicalHistory.includes('糖尿病')
+  const diabetesScore = hasDiabetes ? 1 : 0
+  scoreDetails.push({
+    name: '糖尿病',
+    score: diabetesScore,
+    maxScore: 1,
+    description: hasDiabetes ? '有糖尿病病史' : '无糖尿病病史'
+  })
+  totalScore += diabetesScore
+
+  const hasHeartDisease = questionnaire.medicalHistory.includes('冠心病') || 
+                         questionnaire.medicalHistory.includes('脑血管疾病')
+  const heartScore = hasHeartDisease ? 1 : 0
+  scoreDetails.push({
+    name: '心脑血管病史',
+    score: heartScore,
+    maxScore: 1,
+    description: hasHeartDisease ? '有冠心病/脑血管病史' : '无相关病史'
+  })
+  totalScore += heartScore
 
   let riskLevel: RiskLevel
-  if (totalScore <= 2) {
+  if (totalScore <= 3) {
     riskLevel = 'low'
-  } else if (totalScore <= 4) {
+  } else if (totalScore <= 6) {
     riskLevel = 'medium'
   } else {
     riskLevel = 'high'
@@ -130,4 +163,25 @@ export function getRiskLevelColor(level: RiskLevel): string {
 export function getRiskLevelBgColor(level: RiskLevel): string {
   const map = { low: 'bg-green-100', medium: 'bg-amber-100', high: 'bg-red-100' }
   return map[level]
+}
+
+export function getStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending: '待筛查',
+    registered: '已建档',
+    questionnaire_done: '已问诊',
+    vitals_done: '已体测',
+    completed: '已完成'
+  }
+  return map[status] || status
+}
+
+export function getReferralStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending: '待转诊',
+    referred: '已转诊',
+    completed: '已完成',
+    cancelled: '已取消'
+  }
+  return map[status] || '-'
 }

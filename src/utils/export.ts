@@ -1,15 +1,17 @@
 import type { ScreeningRecord } from '@/types'
-import { getRiskLevelText } from './assessment'
+import { getRiskLevelText, getStatusText, getReferralStatusText } from './assessment'
 import { formatDateTime } from './storage'
 
 export function exportToCSV(records: ScreeningRecord[], filename?: string): void {
   const headers = [
+    '序号',
     '姓名',
     '性别',
     '年龄',
     '身份证号',
     '联系电话',
     '住址',
+    '筛查状态',
     '身高(cm)',
     '体重(kg)',
     'BMI',
@@ -17,30 +19,50 @@ export function exportToCSV(records: ScreeningRecord[], filename?: string): void
     '舒张压(mmHg)',
     '颈围(cm)',
     '腰围(cm)',
+    '既往病史',
+    '打鼾频率',
+    '夜间憋醒',
+    '白天嗜睡',
     '总分',
     '风险等级',
-    '筛查时间'
+    '转诊状态',
+    '转诊医院',
+    '建档时间',
+    '筛查完成时间'
   ]
 
-  const rows = records.map(record => {
-    const { person, vitals, assessment } = record
+  const snoreDescriptions = ['从不', '偶尔', '有时', '经常', '总是']
+  const awakeningDescriptions = ['从不', '偶尔', '每周1-2次', '每周3-4次', '几乎每晚']
+  const sleepinessDescriptions = ['从不', '偶尔', '有时', '经常', '总是']
+
+  const rows = records.map((record, index) => {
+    const { person, questionnaire, vitals, assessment, referral } = record
     return [
+      index + 1,
       person.name,
       person.gender === 'male' ? '男' : '女',
       person.age,
-      person.idCard,
-      person.phone,
-      person.address,
-      vitals?.height || '',
-      vitals?.weight || '',
-      vitals?.bmi || '',
-      vitals?.systolicBp || '',
-      vitals?.diastolicBp || '',
-      vitals?.neckCircumference || '',
-      vitals?.waistCircumference || '',
-      assessment?.totalScore || '',
-      assessment ? getRiskLevelText(assessment.riskLevel) : '',
-      assessment?.assessedAt ? formatDateTime(assessment.assessedAt) : ''
+      person.idCard || '-',
+      person.phone || '-',
+      person.address || '-',
+      getStatusText(person.status),
+      vitals?.height || '-',
+      vitals?.weight || '-',
+      vitals?.bmi || '-',
+      vitals?.systolicBp || '-',
+      vitals?.diastolicBp || '-',
+      vitals?.neckCircumference || '-',
+      vitals?.waistCircumference || '-',
+      questionnaire?.medicalHistory || '-',
+      questionnaire ? snoreDescriptions[questionnaire.snoreFrequency] || '-' : '-',
+      questionnaire ? awakeningDescriptions[questionnaire.nightAwakening] || '-' : '-',
+      questionnaire ? sleepinessDescriptions[questionnaire.daytimeSleepiness] || '-' : '-',
+      assessment?.totalScore != null ? assessment.totalScore : '-',
+      assessment ? getRiskLevelText(assessment.riskLevel) : '-',
+      referral ? getReferralStatusText(referral.status) : '-',
+      referral?.hospital || '-',
+      person.createdAt ? formatDateTime(person.createdAt) : '-',
+      assessment?.assessedAt ? formatDateTime(assessment.assessedAt) : '-'
     ]
   })
 
